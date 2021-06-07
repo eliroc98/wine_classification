@@ -159,7 +159,7 @@ dtest <- wwines[-train_indices,]
 
 ## Forward Stepwise Method
 
-In order to select the most significant variables we apply the Forward Stepwise Method that, starting from a null model, adds the variables, whose inclusion gives the most statistically significant improvement to the fit. 
+To find the main factors of wine quality and remove the unrelated ones, we use forward stepwsie method to do variable selection. The best subset of the model can be found by starting from a null model with no predictors, then picking the best p (p is the number of the predictors in the full model) models which have exactly 1, 2, ..., p predictors,  and finally selecting the model with lowest Bayesian information criterion (BIC) value. In our case, the inclusin of variable follows the order of alcohol, volatile.acidity, residual.sugar, sulphates, fixed.acidity, free.sulfur.dioxide, total.sulfur.dioxide, pH, chlorides and citric.acid. When the model contains 6 variables, it has lowest BIC value. So, variables of the optimal model are the first six variables.
 ```{r}
 library(leaps)
 regfit.fwd=regsubsets(quality~.,data=wwines[,-12],method="forward", nvmax=13)
@@ -168,17 +168,6 @@ summary.fwd <- summary(regfit.fwd)
 plot(summary.fwd$bic,xlab="Number of Variables",ylab="bic")
 points(which.min(summary.fwd$bic),summary.fwd$bic[which.min(summary.fwd$bic)],pch=20,col="red")
 ```
-Forward stepwise steps:
-1. inclusion of alcohol
-2. inclusion of volatile.acidity
-3. inclusion of residual.sugar
-4. inclusion of sulphates
-5. inclusion of fixed.acidity
-6. inclusion of free.sulfur.dioxide
-7. inclusion of total.sulfur.dioxide
-8. inclusion of pH
-9. inclusion of chlorides 
-10. inclusion of citric.acid
 
 Optimal number of variables: 6.
 
@@ -303,6 +292,8 @@ We can state that:
 - the model predicts wines quality with 71.00% accuracy 
 - 71.55% wines are correctly identified as high quality wines
 - 69.92% wines are correctly identified as low quality wines 
+
+
 
 ### Full/Restricted Performance comparison 
 
@@ -480,32 +471,51 @@ The threshold is not affected by the outlier removal, thus we keep using the sam
 ################################################################################
 # BAGGING 
 ```{r}
-n <- seq(nrow( dtrain))
+n <- seq(nrow(dtrain_of))
 set.seed(1)
-S1 <- sample(n, nrow( dtrain), replace = TRUE)
-set.seed(2)
-S2 <- sample(n, nrow( dtrain), replace = TRUE)
-set.seed(3)
-S3 <- sample(n, nrow( dtrain), replace = TRUE)
-set.seed(4)
-S4 <- sample(n, nrow( dtrain), replace = TRUE)
 lr_b <- function(i){
-      lr_f <- glm(quality ~ fixed.acidity+volatile.acidity+residual.sugar+free.sulfur.dioxide+sulphates+alcohol, 
-                  data =  dtrain[i, ],family=binomial(link='logit'))
-      lr_prob <- predict(lr_f, dtrain[i,], type="response")
-      lr_pred <- ifelse(lr_prob > th,"high","low")
-      cm <- confusionMatrix(
-                as.factor(lr_pred),
-                 dtrain[i,]$quality,
-                positive = "high"
-                )
-      a <- cm$overall[[1]]
-      return(a)
+  set.seed(i)
+  s = sample(n, nrow(dtrain_of), replace = TRUE)
+  lr_f <- glm(quality ~ fixed.acidity+volatile.acidity+residual.sugar+free.sulfur.dioxide+sulphates+alcohol, 
+                  data =  dtrain_of[s, ],family=binomial(link='logit'))
+  m = as.data.frame(lr_f$coefficients)
+  return(m)
 }
-aggregate = (lr_b(S1) +lr_b(S2) + lr_b(S3) + lr_b(S4))/4
-round(aggregate,4)
+co <- data.frame("sub1" = lr_b(1), "sub2" = lr_b(2), "sub3" = lr_b(3), "sub4" = lr_b(4), "sub5" = lr_b(5), "sub6" = lr_b(6), "sub7" = lr_b(7),"sub8" = lr_b(8),"sub9" = lr_b(9),"sub10" = lr_b(10))
+co$mean <- rowMeans(co)
+pro <- function(i){ # predict the probability
+  l_p = co$mean[1]+co$mean[2]*dtest.res[i,1]+co$mean[3]*dtest.res[i,2]+co$mean[4]*dtest.res[i,3]+co$mean[5]*dtest.res[i,4]+co$mean[6]*dtest.res[i,5]+ co$mean[7]*dtest.res[i,6] # linear predictor
+  lr_b_prob = exp(l_p)/(1+exp(l_p))
+  lr_b_pred <- ifelse(lr_b_prob < th,"high","low")
+  return(lr_b_prob)
+}
+pre <- function(i){
+  lr_b_pred <- ifelse(pro(i) < th,"high","low")
+  return(lr_b_pred)
+}
+
+ 
+
+pred <- numeric()
+prob <- numeric()
+for (i in rownames(dtest.res)){
+  p = pro(i)
+  prob[i] <- p
+  q = pre(i)
+  pred[i] <- q
+}
+cm_b<-confusionMatrix(as.factor(pred),dtest.res$quality, positive = "high")
+cm_b
+dtest.res$prediction <- pred
+dtest.res$probability <- prob
+dtest.res$label <- as.numeric(case_when(dtest.res$quality == "low" ~ 1, dtest.res$quality == "high"  ~ 0))
+# ROC
+library(precrec)
+precrec_obj <- evalmod(scores = dtest.res$probability, labels = dtest.res$label)
+autoplot(precrec_obj)
+ 
 ```
-{output will be ROC curve}
+In our analysis, the labels are imbalanced, so we try to use bagging to improve the situation. We resample 10 subsets from training set, train the model we have found in previous step on them and aggregate the 10 models . From the result, we can see that the accuracy improves.
 
 ################################################################################
 
