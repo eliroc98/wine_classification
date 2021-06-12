@@ -10,8 +10,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(caret)
 library(ggplot2)
-library(ggplot2)
-library(dplyr)
 library(reshape2)
 library(mlr3learners)
 library(pROC)
@@ -431,7 +429,7 @@ ___
 
 In our analysis the labels are imbalanced, so we try to use bagging to solve the situation and improve our model.\
 We resample 10 subsets from training set, train the model we have found in previous step on them and aggregate the 10 models.\ 
-From the result, we can see that the accuracy improves.
+From the result, we can see that the accuracy, sensitivity and specificity all improve.
 ```{r}
 n <- seq(nrow(dtrain_of))
 set.seed(1)
@@ -442,22 +440,79 @@ lr_b <- function(i){
                   data =  dtrain_of[s, ],family=binomial(link='logit'))
   m = as.data.frame(lr_f$coefficients)
   return(m)
-}
+} 
 co <- data.frame("sub1" = lr_b(1), "sub2" = lr_b(2), "sub3" = lr_b(3), "sub4" = lr_b(4), "sub5" = lr_b(5), "sub6" = lr_b(6), "sub7" = lr_b(7),"sub8" = lr_b(8),"sub9" = lr_b(9),"sub10" = lr_b(10))
 co$mean <- rowMeans(co)
 pro <- function(i){ # predict the probability
-  l_p = co$mean[1]+co$mean[2]*dtest.res[i,1]+co$mean[3]*dtest.res[i,2]+co$mean[4]*dtest.res[i,3]+co$mean[5]*dtest.res[i,4]+co$mean[6]*dtest.res[i,5]+ co$mean[7]*dtest.res[i,6] # linear predictor
+  l_p = co$mean[1]+co$mean[2]*dtrain_of[i,1]+co$mean[3]*dtrain_of[i,2]+co$mean[4]*dtrain_of[i,3]+co$mean[5]*dtrain_of[i,4]+co$mean[6]*dtrain_of[i,5]+ co$mean[7]*dtrain_of[i,6] # linear predictor
   lr_b_prob = exp(l_p)/(1+exp(l_p))
-  lr_b_pred <- ifelse(lr_b_prob < th,"high","low")
+  return(lr_b_prob)
+} # the bagged model
+
+lr_b_pro <- numeric()
+for (i in rownames(dtrain_of)){
+  p <- pro(i)
+  lr_b_pro[i]<- p
+}
+
+lr_b_pre <- numeric()
+accuracy <- numeric()
+sensitivity <- numeric()
+specificity <- numeric()
+
+# optimal threshold 0.345
+for (i in seq(0.01, 0.98, 0.01)){
+  for (j in rownames(dtrain_of)){
+    q <- ifelse(lr_b_pro[j] > i,"low","high")
+    lr_b_pre[j] <- q
+  }
+  cm <- confusionMatrix(as.factor(lr_b_pre),dtrain_of$quality, positive = "high")
+  accuracy[i*100] <- cm$overall["Accuracy"]
+  sensitivity[i*100] <- cm$byClass[1]
+  specificity[i*100] <- cm$byClass[2]
+}
+
+measures_b <- data.frame("thresholds" = seq(0.01, 0.98, 0.01), "accuracy" = accuracy, "sensitivity" = sensitivity, "specificity" = specificity)
+
+
+#finding optimal point: intersection
+equivalent <- function(x, y, tol = 0.02) abs(x - y) < tol
+intersection_indices_b <- which(equivalent(measures_b$sensitivity,measures_b$specificity))
+th_b <- mean(measures_b$thresholds[intersection_indices_b])
+
+melt_measures_b <- melt(measures, id.vars="thresholds")
+ggplot(melt_measures_b, aes( x=thresholds, y=value, colour=variable, group=variable )) + 
+  geom_line() +
+  geom_vline(xintercept = th,linetype = "dotted") +
+  geom_label(aes(x = 0.67, y = 0.5, label = as.character(th_b)))
+
+# Performance of test set
+
+pro_t <- function(i){ # predict the probability
+  l_p = co$mean[1]+co$mean[2]*dtest.res[i,1]+co$mean[3]*dtest.res[i,2]+co$mean[4]*dtest.res[i,3]+co$mean[5]*dtest.res[i,4]+co$mean[6]*dtest.res[i,5]+ co$mean[7]*dtest.res[i,6] 
+  lr_b_prob = exp(l_p)/(1+exp(l_p))
   return(lr_b_prob)
 }
-pre <- function(i){
-  lr_b_pred <- ifelse(pro(i) < th,"high","low")
+pre_t <- function(i){
+  lr_b_pred <- ifelse(pro_t(i) < th_b,"high","low")
   return(lr_b_pred)
 }
 
- 
-
+pred_t <- numeric()
+prob_t <- numeric()
+for (i in rownames(dtest.res)){
+  p = pro_t(i)
+  prob_t[i] <- p
+  q = pre_t(i)
+  pred_t[i] <- q
+}
+cm_b<-confusionMatrix(as.factor(pred_t),dtest.res$quality, positive = "high")
+cm_b
+dtest.res$prediction <- pred_t
+dtest.res$probability <- prob_t
+dtest.res$label <- as.numeric(case_when(dtest.res$quality == "low" ~ 1, dtest.res$quality == "high"  ~ 0))
+pred_lr <- predict(lr_fit_outlierfree,  dtest.res[,1:7], type="response")
+# ROC
 pred <- numeric()
 prob <- numeric()
 for (i in rownames(dtest.res)){
@@ -472,9 +527,27 @@ dtest.res$prediction <- pred
 dtest.res$probability <- prob
 dtest.res$label <- as.numeric(case_when(dtest.res$quality == "low" ~ 1, dtest.res$quality == "high"  ~ 0))
 # ROC
-library(precrec)
-precrec_obj <- evalmod(scores = dtest.res$probability, labels = dtest.res$label)
-autoplot(precrec_obj)
- 
-```
+library(ROCit)
+ROCit_obj <- rocit(dtest.res$probability,class=dtest.res$label)
+plot(ROCit_obj)
+# 
+l_p_t <- numeric()
+l_p <- function(i){ # predict the probability
+  l_p = co$mean[1]+co$mean[2]*dtest.res[i,1]+co$mean[3]*dtest.res[i,2]+co$mean[4]*dtest.res[i,3]+co$mean[5]*dtest.res[i,4]+co$mean[6]*dtest.res[i,5]+ co$mean[7]*dtest.res[i,6] 
+}
+for (i in rownames(dtest.res)){
+  l = l_p(i)
+  l_p_t[i]<- l
+}
 
+score_data <- data.frame(link=l_p_t, 
+                         response=prob_t,
+                         quality=dtest.res$quality,
+                         stringsAsFactors=FALSE)
+score_data %>% 
+  ggplot(aes(x=link, y=response, col=quality)) + 
+  scale_color_manual(values=c("black", "red")) + 
+  geom_point() + 
+  geom_rug() +
+  ggtitle("Both link and response scores of Test set")
+```
