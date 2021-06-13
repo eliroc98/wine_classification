@@ -67,8 +67,8 @@ We re-encode "quality" as a factor with two levels, in order to make the target 
 As we can see the two categories are unbalanced, with the data containing a higher proportion of high quality wines.
 
 ```{r, message=FALSE, warning = FALSE}
-wwines$quality <- as.factor(case_when(wwines$quality <= 5 ~ "low",
-                                      wwines$quality > 5 ~ "high"))
+wwines$quality <- factor(case_when(wwines$quality <= 5 ~ "low",
+                                      wwines$quality > 5 ~ "high"), levels = c("low", "high")) # relevel
 table(wwines$quality)
 ```
 
@@ -121,7 +121,7 @@ wwines$density <- NULL
 It is also useful to compute the correlations between the covariates and the target, in order to see if there are any particularly powerful features that would make the task too trivial.\
 In order to do so we exploit *biserial correlation*, which allows to compute a correlation index between a numerical and a binary variable.
 ```{r, warning=FALSE, message=FALSE}
-wwines$quality <- factor(wwines$quality, levels = c("high","low"))
+wwines$quality <- factor(wwines$quality, levels = c("low","high"))
 bicorrs <- sapply(wwines[,-c(11,12)], function(x) round(biserial.cor(x,wwines$quality),2))
 data.frame(bicorrs) %>% arrange(abs(bicorrs))
 ```
@@ -202,9 +202,6 @@ fixed.acidity, volatile.acidity, residual.sugar, free.sulfur.dioxide, sulphates,
 With `factor()` we relevel the variable "quality", in order to set "low" as the baseline for the logistic regression.
 
 ```{r}
-# relevel
-wwines$quality <- factor(wwines$quality, levels = c("low","high"))
-
 # remove unused variables
 dtrain.res <- dtrain[,c(1,2,4,6,9,10,11,12)]
 dtest.res <- dtest[,c(1,2,4,6,9,10,11,12)]
@@ -327,6 +324,7 @@ By removing 5 out of 11 explanatory variables we are trying to avoid overfitting
 
 ```{r, warning=FALSE}
 #running the full model
+
 lr_fit <- glm(quality ~., data =  dtrain[,-12],
           family=binomial(link='logit'))
 
@@ -429,7 +427,10 @@ ___
 
 In our analysis the labels are imbalanced, so we try to use bagging to solve the situation and improve our model.\
 We resample 10 subsets from training set, train the model we have found in previous step on them and aggregate the 10 models.\ 
-From the result, we can see that the accuracy, sensitivity and specificity all improve.
+From the result, we can see that the performance has improved.
+- Accuracy: 71.68%
+- Sensitivity: 71.85%
+- Specificity: 71.34%
 ```{r}
 n <- seq(nrow(dtrain_of))
 set.seed(1)
@@ -445,7 +446,7 @@ co <- data.frame("sub1" = lr_b(1), "sub2" = lr_b(2), "sub3" = lr_b(3), "sub4" = 
 co$mean <- rowMeans(co)
 pro <- function(i){ # predict the probability
   l_p = co$mean[1]+co$mean[2]*dtrain_of[i,1]+co$mean[3]*dtrain_of[i,2]+co$mean[4]*dtrain_of[i,3]+co$mean[5]*dtrain_of[i,4]+co$mean[6]*dtrain_of[i,5]+ co$mean[7]*dtrain_of[i,6] # linear predictor
-  lr_b_prob = 1/(1+exp(l_p))
+  lr_b_prob = exp(l_p)/(1+exp(l_p))
   return(lr_b_prob)
 } # the bagged model
 
@@ -489,7 +490,7 @@ ggplot(melt_measures_b, aes( x=thresholds, y=value, colour=variable, group=varia
 # Performance of test set
 pro_t <- function(i){ # predict the probability
   l_p = co$mean[1]+co$mean[2]*dtest.res[i,1]+co$mean[3]*dtest.res[i,2]+co$mean[4]*dtest.res[i,3]+co$mean[5]*dtest.res[i,4]+co$mean[6]*dtest.res[i,5]+ co$mean[7]*dtest.res[i,6] 
-  lr_b_prob = 1/(1+exp(l_p))
+  lr_b_prob = exp(l_p)/(1+exp(l_p))
   return(lr_b_prob)
 }
 pre_t <- function(i){
@@ -525,7 +526,7 @@ l_p <- function(i){ # predict the probability
 }
 for (i in rownames(dtest.res)){
   l = l_p(i)
-  l_p_t[i]<- -l
+  l_p_t[i]<- l
 }
 
 score_data <- data.frame(link=l_p_t, 
