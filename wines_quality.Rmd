@@ -121,12 +121,11 @@ wwines$density <- NULL
 It is also useful to compute the correlations between the covariates and the target, in order to see if there are any particularly powerful features that would make the task too trivial.\
 In order to do so we exploit *biserial correlation*, which allows to compute a correlation index between a numerical and a binary variable.
 ```{r, warning=FALSE, message=FALSE}
-wwines$quality <- factor(wwines$quality, levels = c("low","high"))
 bicorrs <- sapply(wwines[,-c(11,12)], function(x) round(biserial.cor(x,wwines$quality),2))
 data.frame(bicorrs) %>% arrange(abs(bicorrs))
 ```
 Here the correlations are displayed in ascending absolute value, and we can observe that the variable showing the highest correlation with wines quality is alcohol, but it is not too strong (38%).
-The sign is positive, meaning that, in our data, wines with a greater alcohol percentage are likely to be of higher quality.
+'The sign is negative, meaning that, in our data, wines with a greater alcohol percentage are likely to be of lower quality.'
 
 ### Boxplots
 
@@ -217,16 +216,16 @@ summary(lr_fit_res)
 exp(cbind(OR = coef(lr_fit_res), confint(lr_fit_res)))
 ```
 
-The following variables are those significant at a 99% confidence level:\
-  * "Intercept": the value 440232.6% corresponds to the increase in the odds of having a high quality wine when all the explanatory variables are set to 0.
-  * "fixed.acidity": a unitary increase (1 g/dm^3) in fixed acidity will lead to a 23.13% increase in the odds of having a high quality wine.
-  * "volatile.acidity": a unitary increase (1 g/dm^3) in volatile acidity will lead to a 102318.1% increase in the odds of having a high quality wine.
-  * "residual.sugar": a unitary increase (1 g/dm^3) in residual sugar will lead to a 6.76% decrease in the odds of having a high quality wine.
-  * "free.sulfur.dioxide": a unitary increase (1 mg/dm^3) in free sulfur dioxide will lead to a 0.62% decrease in the odds of having a high quality wine.
-  * "alcohol": a unitary increase (percentage) in alcohol will lead to a 66.04% decrease in the odds of having a high quality wine.
+The following variables are those significant at a 99.99% confidence level:\
+  * "Intercept": the value 0.01855% corresponds to the odds of having a high quality wine when all the explanatory variables are set to 0.
+  * "fixed.acidity": a unitary increase (1 g/dm^3) in fixed acidity will lead to a 81.93% increase in the odds of having a high quality wine.
+  * "volatile.acidity": a unitary increase (1 g/dm^3) in volatile acidity will lead to a 10.70% increase in the odds of having a high quality wine.
+  * "residual.sugar": a unitary increase (1 g/dm^3) in residual sugar will lead to a 107.20% increase in the odds of having a high quality wine.
+  * "free.sulfur.dioxide": a unitary increase (1 mg/dm^3) in free sulfur dioxide will lead to a 100.92% increase in the odds of having a high quality wine.
+  * "alcohol": a unitary increase (percentage) in alcohol will lead to a 296.73% increase in the odds of having a high quality wine.
 
-The following variable is significant at a 95% confidence level:\
-  * "sulphates": a unitary increase (1 g/dm^3) in sulphates will lead to a 73.22% decrease in the odds of having a high quality wine.
+The following variable is significant at a 99.9% confidence level:\
+  * "sulphates": a unitary increase (1 g/dm^3) in sulphates will lead to a 323.72% increase in the odds of having a high quality wine.
 
 ___
 
@@ -281,7 +280,7 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
   geom_label(aes(x = 0.67, y = 0.5, label = as.character(mean(thresholds[intersection_indices]))))
 ```
 
-The optimal threshold for our aim is 0.65.\
+The optimal threshold for our aim is 0.645.\
 This threshold meets our expectations, as the equilibrium point corresponds to a value higher than 0.5. \
 This higher threshold compensates for the higher a priori probability of labelling a wine as high quality (low: 1640, high: 3258).
 
@@ -310,9 +309,9 @@ cm_base <- list("confusion" = base_pred$confusion,
 cm_base
 ```
 We can state that:
-  * the model predicts wines quality with 71% accuracy.
-  * 71.55% of wines are correctly identified as high quality wines.
-  * 69.92% of wines are correctly identified as low quality wines.
+  * the model predicts wines quality with 71.55% accuracy.
+  * 71.65% of wines are correctly identified as high quality wines.
+  * 71.34% of wines are correctly identified as low quality wines.
 
 ___
 
@@ -381,7 +380,7 @@ plot(lr_fit_res, which = 4, id.n = 1)
 We remove the observation with a very large Cook's Distance (id = 4746), and inspect the plot again, to see the variability of the remaining computed distances.
 
 ```{r}
-dtrain_of <- dtrain.res %>% filter(id != "4746")
+dtrain_of <- dtrain.res %>% filter(id != "4481")
 
 lr_fit_of_1 <- glm(quality ~., data =  dtrain_of[,-8],
           family=binomial(link='logit'))
@@ -418,18 +417,19 @@ variable<-c("(constant)",colnames(dtrain.res)[-c(7,8)])
 
 data.frame(variable,base$Estimate,no_outliers$Estimate, "difference"=base$Estimate-no_outliers$Estimate)
 ```
-We can notice that the coefficients don't change that much when removing the outlier.\
-The biggest changes are in the intercept and in "sulphates", respectively with a -11% and a +1,5% change. We could assume that the outlier we removed affected the intercept coefficient estimate the most.
+'We can notice that the coefficients don't change that much when removing the outlier.\
+The biggest changes are in the intercept and in "sulphates", respectively with a -11% and a +1,5% change. We could assume that the outlier we removed affected the intercept coefficient estimate the most.'
 
 ___
 
 # Bagging
 
-In our analysis the labels are imbalanced, so we try to use bagging to solve the situation and improve our model.\
-We resample 10 subsets from training set, train the model we have found in previous step on them and aggregate the 10 models.\ 
+To further improve our model, we tried bagging.\
+We resample 10 subsets from training set, train the model we have found in previous step on them and aggregate the 10 models to get bagging model.\ 
+The optimal threshold we find for bagging model is the same as the one for the previous model, **0.645**.
 From the result, we can see that the performance has improved.
-- Accuracy: 71.68%
-- Sensitivity: 71.85%
+- Accuracy: 71.75%
+- Sensitivity: 71.95%
 - Specificity: 71.34%
 ```{r}
 n <- seq(nrow(dtrain_of))
@@ -443,13 +443,17 @@ lr_b <- function(i){
   return(m)
 } 
 co <- data.frame("sub1" = lr_b(1), "sub2" = lr_b(2), "sub3" = lr_b(3), "sub4" = lr_b(4), "sub5" = lr_b(5), "sub6" = lr_b(6), "sub7" = lr_b(7),"sub8" = lr_b(8),"sub9" = lr_b(9),"sub10" = lr_b(10))
-co$mean <- rowMeans(co)
-pro <- function(i){ # predict the probability
-  l_p = co$mean[1]+co$mean[2]*dtrain_of[i,1]+co$mean[3]*dtrain_of[i,2]+co$mean[4]*dtrain_of[i,3]+co$mean[5]*dtrain_of[i,4]+co$mean[6]*dtrain_of[i,5]+ co$mean[7]*dtrain_of[i,6] # linear predictor
+co$mean <- rowMeans(co) # coefficients of bagging model
+
+# the bagging model
+
+# predict the probability of training
+pro <- function(i){ 
+  # linear predictor/logit/link
+  l_p = co$mean[1]+co$mean[2]*dtrain_of[i,1]+co$mean[3]*dtrain_of[i,2]+co$mean[4]*dtrain_of[i,3]+co$mean[5]*dtrain_of[i,4]+co$mean[6]*dtrain_of[i,5]+ co$mean[7]*dtrain_of[i,6] 
   lr_b_prob = exp(l_p)/(1+exp(l_p))
   return(lr_b_prob)
-} # the bagged model
-
+} 
 lr_b_pro <- numeric()
 for (i in rownames(dtrain_of)){
   p <- pro(i)
@@ -461,7 +465,7 @@ accuracy <- numeric()
 sensitivity <- numeric()
 specificity <- numeric()
 
-# optimal threshold 0.655
+# optimal threshold
 for (i in seq(0.01, 0.98, 0.01)){
   for (j in rownames(dtrain_of)){
     q <- ifelse(lr_b_pro[j] < i,"low","high")
@@ -476,7 +480,7 @@ for (i in seq(0.01, 0.98, 0.01)){
 measures_b <- data.frame("thresholds" = seq(0.01, 0.98, 0.01), "accuracy" = accuracy, "sensitivity" = sensitivity, "specificity" = specificity)
 
 
-#finding optimal point: intersection
+#finding optimal point: intersection 0.655
 equivalent <- function(x, y, tol = 0.02) abs(x - y) < tol
 intersection_indices_b <- which(equivalent(measures_b$sensitivity,measures_b$specificity))
 th_b <- mean(measures_b$thresholds[intersection_indices_b])
@@ -488,7 +492,7 @@ ggplot(melt_measures_b, aes( x=thresholds, y=value, colour=variable, group=varia
   geom_label(aes(x = 0.67, y = 0.5, label = as.character(th_b)))
 
 # Performance of test set
-pro_t <- function(i){ # predict the probability
+pro_t <- function(i){ # predict the probability of test
   l_p = co$mean[1]+co$mean[2]*dtest.res[i,1]+co$mean[3]*dtest.res[i,2]+co$mean[4]*dtest.res[i,3]+co$mean[5]*dtest.res[i,4]+co$mean[6]*dtest.res[i,5]+ co$mean[7]*dtest.res[i,6] 
   lr_b_prob = exp(l_p)/(1+exp(l_p))
   return(lr_b_prob)
