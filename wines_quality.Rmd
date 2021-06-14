@@ -127,8 +127,7 @@ In order to do so we exploit *biserial correlation*, which allows to compute a c
 bicorrs <- sapply(wwines[,-c(11,12)], function(x) round(biserial.cor(x,wwines$quality),2))
 data.frame(bicorrs) %>% arrange(abs(bicorrs))
 ```
-Here the correlations are displayed in ascending absolute value, and we can observe that the variable showing the highest correlation with wines quality is alcohol, but it is not too strong (-38%).
-The sign is negative, meaning that, in our data, wines with a greater alcohol percentage are likely to be of higher quality.
+Here the correlations are displayed in ascending absolute value, and we can observe that the variable showing the highest correlation value with wines quality is alcohol, meaning that alcohol is more correlated to wine quality compared to the other variables, but it is not too strong (-38%).
 
 ### Boxplots
 
@@ -478,7 +477,7 @@ lr_fit <- glm(quality ~., data =  dtrain[,-12],
 #full model performance
 unrestr_probs <- predict(lr_fit,  dtest[,-12], type="response")
 unrestr_preds <- ifelse(unrestr_probs > th,"high","low")
-unrestr_cm <- confusionMatrix(factor(unrestr_preds),
+unrestr_cm <- confusionMatrix(factor(unrestr_preds, levels = c("low", "high")),
                          dtest$quality,
                         positive = "high"
                         )
@@ -487,7 +486,7 @@ base_performance <- list(unrestr_cm$overall[1], unrestr_cm$byClass[1], unrestr_c
 #outlierfree model performance
 out_probs <- predict(lr_fit_outlierfree,  dtest_of[,-8], type="response")
 out_preds <- ifelse(out_probs > th_2,"high","low")
-out_cm <- confusionMatrix(factor(out_preds),dtest_of$quality,
+out_cm <- confusionMatrix(factor(out_preds, levels = c("low", "high")),dtest_of$quality,
                         positive = "high"
                         )
 outliersfree_performance <- list(out_cm$overall[1], out_cm$byClass[1], out_cm$byClass[2])
@@ -519,13 +518,13 @@ ___
 # Bagging
 
 To further improve our model, we tried bagging.\
-We resample 10 subsets from training set, train the model we have found in previous step on them and aggregate the 10 models to get bagging model.\ 
-The optimal threshold we find for bagging model is the same as the one for the previous model, **0.645**.
+We resample 500 subsets from training set, train the model we have found in previous step on them and aggregate the 10 models to get bagging model.\ 
+The optimal threshold we find for bagging model is the same as the one for the previous model, **0.66**.
 From the result, we can see that the performance has improved.
 
-* Accuracy: 71.75%
-* Sensitivity: 71.95%
-* Specificity: 71.34%
+* Accuracy: 72.94%
+* Sensitivity: 75.46%
+* Specificity: 67.95%
 
 ```{r}
 n <- seq(nrow(dtrain_of))
@@ -538,7 +537,10 @@ lr_b <- function(i){
   m = as.data.frame(lr_f$coefficients)
   return(m)
 } 
-co <- data.frame("sub1" = lr_b(1), "sub2" = lr_b(2), "sub3" = lr_b(3), "sub4" = lr_b(4), "sub5" = lr_b(5), "sub6" = lr_b(6), "sub7" = lr_b(7),"sub8" = lr_b(8),"sub9" = lr_b(9),"sub10" = lr_b(10))
+co <- data.frame(lr_b(1))
+for (i in seq(2,500,1)){
+  co <- data.frame(co,lr_b(i))
+}
 co$mean <- rowMeans(co) # coefficients of bagging model
 
 # the bagging model
@@ -560,31 +562,31 @@ lr_b_pre <- numeric()
 accuracy <- numeric()
 sensitivity <- numeric()
 specificity <- numeric()
-
+order = 1
 # optimal threshold
-for (i in seq(0.01, 0.98, 0.01)){
+for (i in seq(0.01, 0.99, 0.01)){
   for (j in rownames(dtrain_of)){
     q <- ifelse(lr_b_pro[j] < i,"low","high")
     lr_b_pre[j] <- q
   }
   cm <- confusionMatrix(factor(lr_b_pre, levels = c("low", "high")),factor(dtrain_of$quality, levels = c("low", "high")), positive = "high")
-  accuracy[i*100] <- cm$overall["Accuracy"]
-  sensitivity[i*100] <- cm$byClass[1]
-  specificity[i*100] <- cm$byClass[2]
+  accuracy[order] <- cm$overall["Accuracy"]
+  sensitivity[order] <- cm$byClass[1]
+  specificity[order] <- cm$byClass[2]
+  order = order +1
 }
 
-measures_b <- data.frame("thresholds" = seq(0.01, 0.98, 0.01), "accuracy" = accuracy, "sensitivity" = sensitivity, "specificity" = specificity)
+measures_b <- data.frame("thresholds" = seq(0.01,0.99,0.01),"accuracy" = round(accuracy,2), "sensitivity" = round(sensitivity,2), "specificity" = round(specificity,2))
 
-
-#finding optimal point: intersection 0.655
-equivalent <- function(x, y, tol = 0.02) abs(x - y) < tol
+#finding optimal point: intersection 
+equivalent <- function(x, y, tol=0.02) abs(x - y) < tol
 intersection_indices_b <- which(equivalent(measures_b$sensitivity,measures_b$specificity))
 th_b <- mean(measures_b$thresholds[intersection_indices_b])
 
 melt_measures_b <- melt(measures, id.vars="thresholds")
 ggplot(melt_measures_b, aes( x=thresholds, y=value, colour=variable, group=variable )) + 
   geom_line() +
-  geom_vline(xintercept = th,linetype = "dotted") +
+  geom_vline(xintercept = th_b,linetype = "dotted") +
   geom_label(aes(x = 0.67, y = 0.5, label = as.character(th_b)))
 
 # Performance of test set
