@@ -54,7 +54,7 @@ ____
 
 First, we nedd to inspect the variables and make the suitable transformations, if necessary.
 
-```{r, message=FALSE, warning = FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 wwines <- read.csv("winequality-white.csv", sep=";")
 str(wwines)
 ```
@@ -87,7 +87,7 @@ Before proceeding with our analysis, we perform some descriptive statistics in o
 ### Heatmap
 
 First we plot the correlation matrix, in order to detect any strong relation among features which could lead to multicollinearity problems.
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 cors <- cor(wwines[-c(12,13)])
 corrplot(cors, type = "upper",tl.col = "black", tl.srt = 45)
 ```
@@ -97,7 +97,7 @@ This plot highlights a strong correlation between density and two variables: res
 ### Frequency polygons
 
 To get an understanding of which variable should be excluded from the regression, we plot the histograms of the highly correlated variables identified above.
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 residual.sugar.plot <- ggplot(wwines, aes(residual.sugar, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
 
@@ -114,7 +114,7 @@ grid.arrange(residual.sugar.plot,alcohol.plot,density.plot, ncol=1)
 We decide to remove density.\
 In fact, we can observe that for each value of density there is no difference in the distribution of quality, once we account for the numerosity of the two quality levels. On the other hand, the modal values for the other two variables differ for low and high quality wines, thus adding more useful information for the purpose of classification.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 wwines$density <- NULL
 ```
 
@@ -123,7 +123,7 @@ wwines$density <- NULL
 
 It is also useful to compute the correlations between the covariates and the target, in order to see if there are any particularly powerful features that would make the task too trivial.\
 In order to do so we exploit *biserial correlation*, which allows to compute a correlation index between a numerical and a binary variable.
-```{r, warning=FALSE, message=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 bicorrs <- sapply(wwines[,-c(11,12)], function(x) round(biserial.cor(x,wwines$quality),2))
 data.frame(bicorrs) %>% arrange(abs(bicorrs))
 ```
@@ -133,7 +133,7 @@ Here the correlations are displayed in ascending absolute value, and we can obse
 
 We now look at the distribution of all the explanatory variables, in order to both visualize those values which are far from the bulk of the data, and to get an understanding of the variables displaying the most divergent median values among low and high quality wines.
 
-```{r, message=FALSE, warning = FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 # melt the dataset
 wwines.m <- melt(wwines[,-12], id.var = "quality")
 
@@ -172,7 +172,7 @@ The best subset of the model can be found by starting from a null model with no 
 In our case, the inclusion of the variables follows the order of alcohol, volatile.acidity, residual.sugar, sulphates, fixed.acidity, free.sulfur.dioxide, total.sulfur.dioxide, pH, chlorides and citric.acid.\
 When the model contains 6 variables, it has lowest BIC value. So, the variables of the optimal model are the six first ones.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 regfit.fwd=regsubsets(quality~.,data=wwines[,-12],method="forward", nvmax=13)
 summary.fwd <- summary(regfit.fwd)
 
@@ -185,7 +185,7 @@ Optimal number of variables: 6.
 
 We plot the results in order to visualize which variables have been selected with BIC in each model, and we highlight the optimal model with a yellow line. 
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 plot(regfit.fwd,scale="bic")
 grid(nx=11,ny=10,col="red",lty = "solid")
 abline(h=10, col="yellow", lwd = 10)
@@ -236,7 +236,7 @@ From the regression output we can state that only a higher fixed and volatile ac
 
 In order to get the best possible performance, we perform threshold optimization exploiting the `mlr3 package`. 
 
-```{r,results='hide'}
+```{r,results='hide', echo=FALSE, message=FALSE, warning=FALSE}
 # task: classification of training data
 task_train = TaskClassif$new(id = "wines",  dtrain.res[,-8], target = "quality", positive = "high")
 # type of learner: logistic regression
@@ -264,7 +264,7 @@ for (thresh in thresholds) {
 
 Since the choice of the threshold strictly depends on the aim of the analysis, which in our case is to build a predictor which would have the best behaviour in classifying new different data, we look for a threshold which could guarantee an equilibrium between the two types of errors.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 measures <- data.frame(thresholds,
                        "accuracy" = unlist(measures_list[[1]]), 
                        "sensitivity" = unlist(measures_list[[2]]),
@@ -291,7 +291,7 @@ This higher threshold compensates for the higher a priori probability of labelli
 
 ### Model's test performance 
 
-To evaluate the performance of the estimated model, we use the Confusion Matrix to compute the accuracy, sensitivity and sensibility scores.
+To evaluate the performance of the estimated model, we use the Confusion Matrix to compute the accuracy, sensitivity and specificity scores.
 
 ```{r}
 task_train = TaskClassif$new(id = "wines",  dtrain.res[,-8], target = "quality", positive = "high")
@@ -326,7 +326,7 @@ In order to see how the model's performance is affected by the dimensionality re
 By removing 5 out of 11 explanatory variables we are trying to avoid overfitting, thus creating a more stable model with a lower variance; of course, we expect the performance to be slightly worse, as we are introducing some bias.
 
 
-```{r, warning=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 #running the full model
 
 lr_fit <- glm(quality ~., data =  dtrain[,-12],
@@ -378,7 +378,7 @@ By checking the VIF after the removal of the variable "density" we can confirm t
 Outliers and high leverage points may distort the outcome and accuracy of our logistic regression. In order to find influential outliers we use the Cook's Distance, which measures how much deleting each given observation affects the model.\
 As a general rule of thumb, the observations with a Cook’s Distance higher than 4/(N-k-1) are possible outliers, where N is the number of observations and k is the number of covariates.
 
-```{r warning=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 # plot Cook's distance
 cd <- cooks.distance(lr_fit_res)
 N <- 3429
@@ -390,7 +390,7 @@ abline(h=threshold, col="red")
 
 We remove the observations with a Cook's Distance larger than the defined threshold and inspect the plot again, to see the variability of the remaining computed distances.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 dtrain_of <- dtrain.res[-which(cd>threshold),]
 dtest_of <- dtest.res[-which(cd>threshold),]
 
@@ -423,7 +423,7 @@ exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
 
 We perform threshold tuning again for the new model.
 
-```{r,results='hide'}
+```{r message=FALSE, warning=FALSE, results = "hide"}
 # task: classification of training data
 task_train = TaskClassif$new(id = "wines",  dtrain_of[,-8], target = "quality", positive = "high")
 # type of learner: logistic regression
@@ -449,7 +449,7 @@ for (thresh in thresholds) {
 
 ```
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 measures <- data.frame(thresholds,
                        "accuracy" = unlist(measures_list[[1]]), 
                        "sensitivity" = unlist(measures_list[[2]]),
@@ -468,9 +468,10 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
   geom_label(aes(x = 0.67, y = 0.5, label = as.character(mean(thresholds[intersection_indices]))))
 ```
 
+
 ### Change in performance
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 lr_fit <- glm(quality ~., data =  dtrain[,-12],
           family=binomial(link='logit'))
 
@@ -495,6 +496,7 @@ outliersfree_performance <- list(out_cm$overall[1], out_cm$byClass[1], out_cm$by
 data.frame("base_performance" =unlist(base_performance),"outliers_free_performance" = unlist(outliersfree_performance), 
            "difference" = unlist(outliersfree_performance) - unlist(base_performance))
 ```
+
 After removing the outliers, the model has a higher overall accuracy on the test set.
 
 ### Estimated coefficients
@@ -502,7 +504,7 @@ After removing the outliers, the model has a higher overall accuracy on the test
 To see the impact that the removed observation had on our estimated model, we can see how much the coefficients changed from model to model.\
 The issue with outliers is in fact that they have a great inpact on the estimation of coefficients.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 base <- data.frame(summary(lr_fit_res)$coefficient)
 no_outliers<- data.frame(summary(lr_fit_outlierfree)$coefficient)
 
@@ -510,8 +512,9 @@ variable<-c("(constant)",colnames(dtrain.res)[-c(7,8)])
 
 data.frame(variable,base$Estimate,no_outliers$Estimate, "difference"=base$Estimate-no_outliers$Estimate)
 ```
+
 We can notice that the coefficients are quite different after outliers removal, in particular those related to the constant, volatile acidity, sulphates and alcohol.\
-However, no coefficient changes sign.
+However, no coefficient changes sign. meaning that the outliers were not influencing the direction of the effects, but only the entity.
 
 ___
 
