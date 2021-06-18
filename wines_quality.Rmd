@@ -21,7 +21,7 @@ library(broom)
 library(ltm)
 library(MASS)
 library(leaps)
-library(ROCit)
+library(plotROC)
 ```
 
 ![](wines.jpeg)
@@ -87,6 +87,7 @@ Before proceeding with our analysis, we perform some descriptive statistics in o
 ### Heatmap
 
 First we plot the correlation matrix, in order to detect any strong relation among features which could lead to multicollinearity problems.
+
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 cors <- cor(wwines[-c(12,13)])
 corrplot(cors, type = "upper",tl.col = "black", tl.srt = 45)
@@ -96,7 +97,8 @@ This plot highlights a strong correlation between density and two variables: res
 
 ### Frequency polygons
 
-To get an understanding of which variable should be excluded from the regression, we plot the histograms of the highly correlated variables identified above.
+To get an understanding of which variable should be excluded from the regression, we plot the histograms of the highly correlated variables identified above.\
+
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 residual.sugar.plot <- ggplot(wwines, aes(residual.sugar, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
@@ -123,6 +125,7 @@ wwines$density <- NULL
 
 It is also useful to compute the correlations between the covariates and the target, in order to see if there are any particularly powerful features that would make the task too trivial.\
 In order to do so we exploit *biserial correlation*, which allows to compute a correlation index between a numerical and a binary variable.
+
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 bicorrs <- sapply(wwines[,-c(11,12)], function(x) round(biserial.cor(x,wwines$quality),2))
 data.frame(bicorrs) %>% arrange(abs(bicorrs))
@@ -298,7 +301,7 @@ This higher threshold compensates for the higher a priori probability of labelli
 
 To evaluate the performance of the estimated model, we use the Confusion Matrix to compute the accuracy, sensitivity and specificity scores.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 task_train = TaskClassif$new(id = "wines",  dtrain.res[,-8], target = "quality", positive = "high")
 task_test = TaskClassif$new(id = "wines_test",  dtest.res[,-8], target = "quality", positive = "high")
 
@@ -369,7 +372,9 @@ Once the model has been trained, we can perform some diagnostics to identify any
 
 ### Multicollinearity 
 
-The Variance Inflation Factor measures how much the behaviour (variance) of an independent variable is influenced, or inflated, by its interaction/correlation with the other independent variables. Multicollinearity would not reduce the predictive power of the model, but it inflates the variance and thus the standard errors of the estimates, thus leading to wider confidence intervals, and less statistically reliable estimates.
+The Variance Inflation Factor measures how much the behaviour (variance) of an independent variable is influenced, or inflated, by its interaction/correlation with the other independent variables.\
+Multicollinearity would not reduce the predictive power of the model, but it inflates the variance and thus the standard errors of the estimates, thus leading to wider confidence intervals, and less statistically reliable estimates.\
+As a rule of thumb, we consider problematic those variables having the square root of VIF higher than 2.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 a <- vif(lr_fit_res)
@@ -431,7 +436,7 @@ exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
 
 We perform threshold tuning again for the new outliers free model.
 
-```{r message=FALSE, warning=FALSE, results = "hide"}
+```{r message=FALSE, warning=FALSE, results = "hide", echo = FALSE}
 # task: classification of training data
 task_train = TaskClassif$new(id = "wines",  dtrain_of[,-8], target = "quality", positive = "high")
 # type of learner: logistic regression
@@ -532,7 +537,7 @@ ___
 # Bagging
 
 To further improve our model, we tried bagging.\
-We resample 500 subsets from training set, train the model we have found in previous step on them and aggregate the 10 models to get bagging model.\ 
+We resample 500 subsets from training set, train the model we have found in previous step on them and aggregate the 500 models to get bagging model.\ 
 The optimal threshold we find for bagging model is the same as the one for the previous model, **0.66**.
 From the result, we can see that the performance has improved.
 
@@ -540,7 +545,7 @@ From the result, we can see that the performance has improved.
 * Sensitivity: 75.46%
 * Specificity: 67.95%
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 n <- seq(nrow(dtrain_of))
 set.seed(1)
 lr_b <- function(i){
@@ -631,8 +636,8 @@ dtest_of$probability <- prob_t
 dtest_of$label <- as.numeric(case_when(dtest_of$quality == "low" ~ 0, dtest_of$quality == "high"  ~ 1))
 
 # ROC
-ROCit_obj <- rocit(dtest_of$probability,class=dtest_of$label)
-plot(ROCit_obj)
+rocplot <- ggplot(dtest_of, aes(m = dtest_of$probability, d = dtest_of$label))+ geom_roc(n.cuts=20,labels=FALSE)
+rocplot + style_roc(theme = theme_grey)
 
 # link and response
 l_p_t <- numeric()
