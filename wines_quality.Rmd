@@ -66,7 +66,7 @@ All the features are numeric, and are already stored in the right format.\
 We re-encode "quality" as a factor with two levels, in order to make the target binary. We also specify the order of the levels, since the method to perform logistic regression takes the first level as the baseline, and we want to predict the probability of having a high quality wine.\
 As we can see the two categories are unbalanced, with the data containing a higher proportion of "high" instances.
 
-```{r, message=FALSE, warning = FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 wwines$quality <- factor(case_when(wwines$quality <= 5 ~ "low",
                                       wwines$quality > 5 ~ "high"), levels = c("low", "high")) # relevel
 table(wwines$quality)
@@ -74,7 +74,7 @@ table(wwines$quality)
 
 In order to have a unique identifier for each wine, we also create an "id" variable.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 wwines["id"] <- rownames(wwines)
 ```
 
@@ -154,7 +154,7 @@ ___
 
 In order to train and validate our model on different sets, we split the data, keeping 30% of it to carry out performance evaluation.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 set.seed(42)
 train_indices<- createDataPartition(wwines$quality,p=0.7,list=FALSE)
 dtrain <- wwines[train_indices,]
@@ -199,7 +199,7 @@ ___
 Logistic Regression is now performed on the restricted model with the six selected variables:\
 fixed.acidity, volatile.acidity, residual.sugar, free.sulfur.dioxide, sulphates, alcohol.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 # remove unused variables
 dtrain.res <- dtrain[,c(1,2,4,6,9,10,11,12)]
 dtest.res <- dtest[,c(1,2,4,6,9,10,11,12)]
@@ -210,7 +210,11 @@ lr_fit_res <- glm(quality ~., data =  dtrain.res[,-8],
 
 # coefficients
 summary(lr_fit_res)
+```
 
+In order to make the coefficients interpretable in terms of odds ratios, we exponentiate them.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 # odds ratios
 exp(cbind(OR = coef(lr_fit_res), confint(lr_fit_res)))
 ```
@@ -234,7 +238,8 @@ From the regression output we can state that only a higher fixed and volatile ac
 
 ### Optimal threshold
 
-In order to get the best possible performance, we perform threshold optimization exploiting the `mlr3 package`. 
+In order to get the best possible performance, we perform threshold optimization exploiting the `mlr3 package`.\
+To do so, we compute the cross validated accuracy, sensitivity, and specificity for a grid of different thesholds, and select the optimal one.
 
 ```{r,results='hide', echo=FALSE, message=FALSE, warning=FALSE}
 # task: classification of training data
@@ -364,9 +369,9 @@ Once the model has been trained, we can perform some diagnostics to identify any
 
 ### Multicollinearity 
 
-The Variance Inflation Factor measures how much the behaviour (variance) of an independent variable is influenced, or inflated, by its interaction/correlation with the other independent variables.
+The Variance Inflation Factor measures how much the behaviour (variance) of an independent variable is influenced, or inflated, by its interaction/correlation with the other independent variables. Multicollinearity would not reduce the predictive power of the model, but it inflates the variance and thus the standard errors of the estimates, thus leading to wider confidence intervals, and less statistically reliable estimates.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 a <- vif(lr_fit_res)
 sqrt(vif(lr_fit_res))>2
 ```
@@ -375,8 +380,10 @@ By checking the VIF after the removal of the variable "density" we can confirm t
 
 ### Detecting outliers
 
-Outliers and high leverage points may distort the outcome and accuracy of our logistic regression. In order to find influential outliers we use the Cook's Distance, which measures how much deleting each given observation affects the model.\
-As a general rule of thumb, the observations with a Cook’s Distance higher than 4/(N-k-1) are possible outliers, where N is the number of observations and k is the number of covariates.
+Outliers and high leverage points may distort the outcome and accuracy of our logistic regression.\
+In order to find influential outliers we use the Cook's Distance, which measures how much deleting each given observation affects the fitted values of the model.\
+As a general rule of thumb, the observations with a Cook’s Distance higher than 4/(N-k-1) are possible outliers, where N is the number of observations and k is the number of covariates.\
+Even if Cook's distance can suffer from a masking effect, for the scope of this project we will still use it for simplicity.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 # plot Cook's distance
@@ -406,8 +413,9 @@ ___
 
 ## Outliers free model
 
-Now, we build a new model without the outlying observations.
-```{r}
+Now, we build a new model without the outlying observations. We will then compare the estimated coefficents and the performance with the previous model.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
 #fitting on outlier free data
 lr_fit_outlierfree <- glm(quality ~., data =  dtrain_of[,-8],family=binomial(link='logit'))
 
@@ -421,7 +429,7 @@ exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
 
 ### Threshold tuning
 
-We perform threshold tuning again for the new model.
+We perform threshold tuning again for the new outliers free model.
 
 ```{r message=FALSE, warning=FALSE, results = "hide"}
 # task: classification of training data
@@ -468,8 +476,11 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
   geom_label(aes(x = 0.67, y = 0.5, label = as.character(mean(thresholds[intersection_indices]))))
 ```
 
+The resulting optimal threshold has not changed from the previous model.
 
 ### Change in performance
+
+It is interesting to compare the test performance before and after the outliers removal. We expect the new robust model to be more accurate.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 lr_fit <- glm(quality ~., data =  dtrain[,-12],
@@ -501,8 +512,8 @@ After removing the outliers, the model has a higher overall accuracy on the test
 
 ### Estimated coefficients
 
-To see the impact that the removed observation had on our estimated model, we can see how much the coefficients changed from model to model.\
-The issue with outliers is in fact that they have a great inpact on the estimation of coefficients.
+To see the impact that the removed observation had on our estimated model, we can see how much the coefficients changed after we removed the outliers.\
+The issue with outliers is in fact that they have a great influence on the estimation, as they mask the real effect of a feature on the probability of having a high quality wine.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 base <- data.frame(summary(lr_fit_res)$coefficient)
@@ -514,7 +525,7 @@ data.frame(variable,base$Estimate,no_outliers$Estimate, "difference"=base$Estima
 ```
 
 We can notice that the coefficients are quite different after outliers removal, in particular those related to the constant, volatile acidity, sulphates and alcohol.\
-However, no coefficient changes sign. meaning that the outliers were not influencing the direction of the effects, but only the entity.
+However, no coefficient changes sign, meaning that the outliers were not influencing the direction of the effects, but only their entity.
 
 ___
 
